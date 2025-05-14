@@ -1,0 +1,13 @@
+{
+  "admins": {
+    "description": "管理员QQ号列表",
+    "type": "list",
+    "items": {
+      "type": "string"
+    },
+    "hint": "在此添加有权限管理投票插件的QQ号",
+    "default": [
+        "2923597244"
+    ]
+  }
+}
