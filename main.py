@@ -3,14 +3,16 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 from astrbot.core import AstrBotConfig
 from .hitokoto_handler import get_hitokoto
-from .beauty_handler import get_beauty_score
-from .baidu_auth import init_baidu_credentials
+from .baidu.beauty_handler import get_beauty_score
+from .baidu.baidu_auth import init_baidu_credentials
 
 @register("hitokoto", "YourName", "一言插件", "1.1.0")
 class HitokotoPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
+        logger.info(f"正在加载插件配置: {self.config}")
+        logger.debug(f"详细配置内容: {dict(self.config)}")  # 输出完整配置内容
         init_baidu_credentials(self.config)
 
     async def initialize(self):
@@ -25,8 +27,8 @@ class HitokotoPlugin(Star):
     @filter.command("测颜值")
     async def beauty_command(self, event: AstrMessageEvent):
         """发送人像图片获取颜值评分。"""
-        print(event.message_obj.raw_message) # 平台下发的原始消息在这里
-        print(event.message_obj.message) # AstrBot 解析出来的消息链内容
+        # print(event.message_obj.raw_message) # 平台下发的原始消息在这里
+        # print(event.message_obj.message) # AstrBot 解析出来的消息链内容
         yield await get_beauty_score(event)
 
     @filter.command("xmz-help")

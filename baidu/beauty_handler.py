@@ -5,16 +5,19 @@ import aiohttp
 import base64
 import json
 from urllib.parse import unquote
-from .baidu_auth import get_baidu_access_token, BAIDU_API_KEY, BAIDU_SECRET_KEY
+from .baidu_auth import get_baidu_access_token
 
 
 async def get_beauty_score(event: AstrMessageEvent):
     """获取图片颜值评分（使用百度人脸识别API）。"""
     try:
-        if not BAIDU_API_KEY or BAIDU_API_KEY == "YOUR_BAIDU_API_KEY" or \
-           not BAIDU_SECRET_KEY or BAIDU_SECRET_KEY == "YOUR_BAIDU_SECRET_KEY":
-            logger.warning("百度API Key或Secret Key未配置，请在环境变量中设置 BAIDU_FACE_API_KEY 和 BAIDU_FACE_SECRET_KEY。如果已设置，请重启应用。")
-            return event.plain_result("颜值评分功能未正确配置，请联系管理员。")
+        try:
+            access_token = await get_baidu_access_token()
+            if not access_token:
+                return event.plain_result("获取百度API凭证失败，暂时无法评分，请稍后再试。")
+        except Exception as e:
+            logger.error(f"获取百度access_token时发生错误: {e}")
+            return event.plain_result("获取百度API凭证时发生错误，请稍后再试。")
 
         image_components = [c for c in event.message_obj.message if isinstance(c, astrbot.api.message_components.Image)]
         if not image_components:
@@ -33,7 +36,7 @@ async def get_beauty_score(event: AstrMessageEvent):
         payload = {
             "image": base64_data,
             "image_type": "BASE64",
-            "face_field": "beauty,age,gender,emotion,glasses,face_shape,quality,mask,spoofing,eye_status",
+            "face_field": "beauty,age,gender,emotion,glasses,face_shape,quality,mask,spoofing,eye_status,landmark150",
             "max_face_num": 1, # 仅分析最大的人脸
             "liveness_control": "NORMAL" # 增加活体检测
         }
@@ -105,12 +108,82 @@ async def get_beauty_score(event: AstrMessageEvent):
 
                             liveness_score = face_info.get("liveness", {}).get("livemapscore", -1.0)
                             spoofing_score = face_info.get("spoofing", -1.0) # 判断图片是合成图的概率
+                            
 
+                                
+                            # 增强质量分析报告
+                            quality = face_info.get("quality", {})
+                            blur = quality.get("blur", 0)
+                            illumination = quality.get("illumination", 128)
+                            completeness = quality.get("completeness", 1)
+                            quality_score = quality.get("score", 0)
+                            
+                            # 初始化result_parts列表
+                            result_parts = []
+                            
+                            # 增强质量分析报告
+                            result_parts.append("--------------------")
+                            result_parts.append("📊 质量分析：")
+                            if quality_score > 0:
+                                result_parts.append(f"  综合质量评分：{quality_score:.1f}/100")
+                                
+                            # 详细质量指标
+                            blur_status = "清晰" if blur <= 0.3 else "轻微模糊" if blur <= 0.7 else "模糊"
+                            light_status = "明亮" if illumination > 200 else "正常" if illumination > 100 else "较暗" if illumination > 40 else "很暗"
+                            result_parts.append(f"  清晰度：{blur_status} (值：{blur:.2f})")
+                            result_parts.append(f"  光照：{light_status} (值：{illumination})")
+                            result_parts.append(f"  完整度：{'完整' if completeness == 1 else '不完整'}")
+                            
+                            # 增强活体分析
+                            liveness_analysis = ""
+                            if liveness_score != -1:
+                                if liveness_score > 0.8:
+                                    liveness_analysis = "(真人可能性很高)"
+                                elif liveness_score > 0.5:
+                                    liveness_analysis = "(可能是真人)"
+                                else:
+                                    liveness_analysis = "(可能是照片)"
+                                
+                                # 添加活体检测详细分析
+                                liveness_details = face_info.get("liveness", {})
+                                if "faceliveness" in liveness_details:
+                                    liveness_analysis += f"，活体检测得分：{liveness_details['faceliveness']:.2f}"
+                                if "faceliveness_threshold" in liveness_details:
+                                    liveness_analysis += f" (阈值：{liveness_details['faceliveness_threshold']:.2f})"
+                                
+                                # 添加活体检测详细评分
+                                result_parts.append(f"  活体检测总分：{liveness_score:.2f}")
+                                if "faceliveness" in liveness_details:
+                                    result_parts.append(f"  活体检测详细得分：{liveness_details['faceliveness']:.2f}")
+                                if "faceliveness_threshold" in liveness_details:
+                                    result_parts.append(f"  活体检测阈值：{liveness_details['faceliveness_threshold']:.2f}")
+                            
                             # 构建结果
                             result_parts = ["✨ 颜值分析报告 ✨"]
                             result_parts.append("--------------------")
                             result_parts.append(f"👤 基本信息：")
                             result_parts.append(f"  这位{gender}的颜值评分为：{beauty_score:.0f}分！")
+                            
+                            # 添加详细质量分析
+                            if quality_score > 0:
+                                result_parts.append(f"  综合质量评分：{quality_score:.1f}/100")
+                            
+
+                                
+                            # 添加活体检测详细分析
+                            if liveness_score != -1:
+                                liveness_status = "真人" if liveness_score > 0.8 else "可能是真人" if liveness_score > 0.5 else "可能是照片"
+                                result_parts.append(f"  活体检测：{liveness_status} (得分：{liveness_score:.2f})")
+                                
+                            # 添加防伪检测
+                            if spoofing_score != -1:
+                                spoofing_status = "真实照片" if spoofing_score < 0.3 else "可能是真实照片" if spoofing_score < 0.7 else "可能是合成图片"
+                                result_parts.append(f"  防伪检测：{spoofing_status} (得分：{spoofing_score:.2f})")
+                                
+                            # 添加活体检测详细分析
+                            if liveness_score != -1:
+                                liveness_status = "真人" if liveness_score > 0.8 else "可能是真人" if liveness_score > 0.5 else "可能是照片"
+                                result_parts.append(f"  活体检测：{liveness_status} (得分：{liveness_score:.2f})")
                             if beauty_score > 85: result_parts.append("    评价：倾国倾城，颜值爆表！")
                             elif beauty_score > 75: result_parts.append("    评价：相当出众，魅力十足！")
                             elif beauty_score > 60: result_parts.append("    评价：颜值在线，还不错哦！")
@@ -119,6 +192,15 @@ async def get_beauty_score(event: AstrMessageEvent):
                             result_parts.append(f"  年龄大约：{age}岁")
                             result_parts.append(f"  当前表情：{emotion}")
                             result_parts.append(f"  脸型判断：{face_shape}")
+                            result_parts.append(f"  人脸置信度：{face_info.get('face_probability', 0)*100:.1f}%")
+                            
+                            
+                            # 添加角度信息
+                            angle = face_info.get('angle', {})
+                            yaw = angle.get('yaw', 0)
+                            pitch = angle.get('pitch', 0)
+                            roll = angle.get('roll', 0)
+                            result_parts.append(f"  头部角度：左右{yaw:.1f}°, 上下{pitch:.1f}°, 旋转{roll:.1f}°")
 
                             result_parts.append("--------------------")
                             result_parts.append("👓 外观细节：")
