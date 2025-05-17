@@ -11,8 +11,6 @@ class HitokotoPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
-        logger.info(f"正在加载插件配置: {self.config}")
-        logger.debug(f"详细配置内容: {dict(self.config)}")  # 输出完整配置内容
         init_baidu_credentials(self.config)
 
     async def initialize(self):
